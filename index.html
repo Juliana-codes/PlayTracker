@@ -123,7 +123,9 @@
       <div class="modes">
         <button id="modeZone" class="mode-btn">Zone</button>
         <button id="modeMan"  class="mode-btn">Man-to-man</button>
-      </div>
+        <button id="nextPeriodBtn" class="mode-btn">Next Q/OT</button>
+    </div>
+
       <div class="muted" style="margin-top:6px;">
         Current period: <span id="periodNow"></span>
       </div>
@@ -245,6 +247,7 @@
 
   modeZone.addEventListener('click', ()=>setMode('Zone'));
   modeMan .addEventListener('click', ()=>setMode('Man-to-man'));
+  nextPeriodBtn.addEventListener('click', nextPeriod);
 
   goodBtn.addEventListener('click', ()=>{
     ui.grade = (ui.grade==='Good') ? null : 'Good';
@@ -290,14 +293,21 @@
   }
 
   function endGame(){
-    if (!confirm('End game and clear all data?')) return;
+    if (!confirm('Export and end game?')) return;
+
+    // 1. Export CSV BEFORE clearing
+    exportCSV();
+
+    // 2. Reset game back to Q1, clear log
     S.log = [];
     S.period = 1;
     ui.selectedPlay = null;
     ui.grade = null;
     ui.result = null;
     ui.paintTouches = 0;
-    setSaving(); save();
+
+    setSaving();
+    save();
     render();
   }
 
