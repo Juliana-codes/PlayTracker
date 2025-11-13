@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
+<title>Possessions Tracker</title>
+<style>
+  :root { --pad: 14px; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: var(--pad); }
+  h2, h3 { margin: 8px 0; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .col { display:flex; flex-direction:column; gap:10px; }
+
+  /* Mode toggle */
+  .modes { display:flex; gap:8px; }
+  .mode-btn {
+    padding:10px 14px; border:1px solid #ddd; border-radius:999px; background:#f7f7f7;
+    font-weight:700; cursor:pointer;
+  }
+  .mode-btn.active { background:#222; color:#fff; border-color:#222; }
+
+  .card {
+    border:1px solid #e7e7e7; border-radius:14px; padding:12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    background:#fff;
+  }
+
+  /* Plays (one column) */
+  .plays { display:flex; flex-direction:column; gap:8px; }
+  .play {
+    padding:10px 12px; border:1px solid #ddd; border-radius:10px;
+    cursor:pointer; background:#fafafa;
+  }
+  .play.selected { background:#e8f2ff; border-color:#6aa5ff; }
+
+  /* Selection chips */
+  .chip-row { display:flex; gap:10px; flex-wrap:wrap; }
+  .chip {
+    padding:12px 14px; border-radius:12px; border:1px solid #ddd;
+    background:#f6f6f6; font-weight:800; cursor:pointer; user-select:none;
+  }
+  .chip.good.selected  { background:#e8f7ee; border-color:#2ecc71; }
+  .chip.bad.selected   { background:#ffe9e9; border-color:#ff6b6b; }
+  .chip.paint.selected { background:#fff4e0; border-color:#f39c12; }
+  .chip.result.selected { outline:2px solid #555; }
+
+  /* Submit button fixed */
+  .submit-wrap {
+    position:fixed; right:12px; bottom:12px; z-index:10;
+  }
+  .submit {
+    padding:14px 18px; border:none; border-radius:999px;
+    font-size:18px; font-weight:900;
+    background:#111; color:#fff; cursor:pointer;
+    box-shadow:0 4px 10px rgba(0,0,0,0.15);
+  }
+  .submit:disabled { opacity:0.5; cursor:not-allowed; }
+
+  /* Log */
+  .log { margin-top:14px; }
+
+  .log-row {
+    display:grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap:8px;
+    align-items:center;
+    border-bottom:1px dashed #eee;
+    padding:8px 0;
+    font-size:14px;
+  }
+
+  /* Good / Bad row coloring */
+  .log-row.good { background:#e8f7ee; }
+  .log-row.bad  { background:#ffe9e9; }
+
+  .log-header {
+    font-weight:800;
+    border-bottom:1px solid #ddd;
+    padding-bottom:6px;
+    margin-bottom:4px;
+    background:#fff !important;
+  }
+
+  /* Period header row */
+  .period-header {
+    grid-column:1 / 5;
+    text-align:center;
+    font-weight:800;
+    background:#f0f0f0 !important;
+    padding:4px 0;
+    border-bottom:1px solid #ddd;
+    margin-top:4px;
+  }
+
+  .muted { color:#777; font-size:12px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .btn-sm {
+    padding:8px 10px; border-radius:10px; border:1px solid #ddd;
+    background:#f7f7f7; font-weight:700; cursor:pointer;
+  }
+
+  .grid {
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:12px;
+  }
+  @media(min-width: 800px){
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="row" style="align-items:center; justify-content:space-between;">
+  <h2>Possessions Tracker</h2>
+  <div id="saveState" class="muted">Saved</div>
+</div>
+
+<div class="card">
+  <div class="row" style="align-items:center; justify-content:space-between;">
+    <div>
+      <div class="modes">
+        <button id="modeZone" class="mode-btn">Zone</button>
+        <button id="modeMan"  class="mode-btn">Man-to-man</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">
+        Current period: <span id="periodNow"></span>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn-sm" onclick="exportCSV()">Export CSV</button>
+      <button class="btn-sm" onclick="nextPeriod()">Next Period</button>
+      <button class="btn-sm" onclick="endGame()">End Game</button>
+    </div>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- Plays -->
+  <div class="card">
+    <h3>Plays</h3>
+    <div id="plays" class="plays"></div>
+  </div>
+
+  <!-- Selection -->
+  <div class="card">
+    <h3>Selection</h3>
+    <div class="col">
+      <div class="chip-row">
+        <div id="goodBtn"  class="chip good">Good</div>
+        <div id="badBtn"   class="chip bad">Bad</div>
+        <div id="paintBtn" class="chip paint">Paint touch</div>
+      </div>
+
+      <div>
+        <div class="muted" style="margin:6px 0 8px;">Result</div>
+        <div class="chip-row">
+          <div class="chip result" data-result="+2">+2</div>
+          <div class="chip result" data-result="-2">-2</div>
+          <div class="chip result" data-result="+3">+3</div>
+          <div class="chip result" data-result="-3">-3</div>
+          <div class="chip result" data-result="Fouled">Fouled</div>
+          <div class="chip result" data-result="TO">TO</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Submit -->
+<div class="submit-wrap">
+  <button id="submitBtn" class="submit" disabled>Submit</button>
+</div>
+
+<!-- Log -->
+<div class="log card">
+  <h3>Log (most recent at top)</h3>
+  <div id="logList"></div>
+</div>
+
+<script>
+  // ---- Config ----
+  const PLAYS = {
+    Zone:         ['Transition','Triangle','X','Overload','Middle', 'BLOBs','SLOBs'],
+    'Man-to-man': ['Transition','Spots','Quick hitters','Horns','BLOBs','SLOBs']
+  };
+
+  const KEY = 'possessions_tracker_v1';
+
+  // ---- State ----
+  let S = load();
+  let ui = {
+    mode: S.mode || 'Zone',
+    selectedPlay: null,
+    grade: null,
+    result: null,
+    paintTouches: 0
+  };
+
+  // ---- Storage helpers ----
+  function load(){
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return { mode:'Zone', log:[], period:1 };
+      const obj = JSON.parse(raw);
+      obj.mode   ||= 'Zone';
+      obj.log    ||= [];
+      obj.period = typeof obj.period === 'number' ? obj.period : 1;
+      return obj;
+    } catch {
+      return { mode:'Zone', log:[], period:1 };
+    }
+  }
+  function save(){
+    localStorage.setItem(KEY, JSON.stringify(S));
+    setSaved();
+  }
+  let saveTimer=null;
+  function setSaving(){
+    clearTimeout(saveTimer);
+    document.getElementById('saveState').textContent='Saving…';
+  }
+  function setSaved(){
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(()=>{
+      document.getElementById('saveState').textContent='Saved';
+    },300);
+  }
+
+  function periodLabel(p){
+    if (p <= 4) return 'Q' + p;
+    return 'OT' + (p - 4);
+  }
+
+  // ---- UI wiring ----
+  const modeZone   = document.getElementById('modeZone');
+  const modeMan    = document.getElementById('modeMan');
+  const playsEl    = document.getElementById('plays');
+  const goodBtn    = document.getElementById('goodBtn');
+  const badBtn     = document.getElementById('badBtn');
+  const paintBtn   = document.getElementById('paintBtn');
+  const submitBtn  = document.getElementById('submitBtn');
+  const logList    = document.getElementById('logList');
+  const periodNowE = document.getElementById('periodNow');
+
+  modeZone.addEventListener('click', ()=>setMode('Zone'));
+  modeMan .addEventListener('click', ()=>setMode('Man-to-man'));
+
+  goodBtn.addEventListener('click', ()=>{
+    ui.grade = (ui.grade==='Good') ? null : 'Good';
+    renderSelectors();
+    checkReady();
+  });
+  badBtn.addEventListener('click', ()=>{
+    ui.grade = (ui.grade==='Bad') ? null : 'Bad';
+    renderSelectors();
+    checkReady();
+  });
+  paintBtn.addEventListener('click', ()=>{
+    ui.paintTouches = (ui.paintTouches || 0) + 1;
+    renderSelectors();
+  });
+
+  document.querySelectorAll('.chip.result').forEach(ch => {
+    ch.addEventListener('click', ()=>{
+      const val = ch.dataset.result;
+      ui.result = (ui.result===val) ? null : val;
+      renderSelectors();
+      checkReady();
+    });
+  });
+
+  submitBtn.addEventListener('click', submitPossession);
+
+  function setMode(m){
+    ui.mode = m;
+    S.mode = m;
+    ui.selectedPlay = null;
+    ui.grade = null;
+    ui.result = null;
+    ui.paintTouches = 0;
+    setSaving(); save();
+    render();
+  }
+
+  function nextPeriod(){
+    S.period = (S.period || 1) + 1;
+    setSaving(); save();
+    render();
+  }
+
+  function endGame(){
+    if (!confirm('End game and clear all data?')) return;
+    S.log = [];
+    S.period = 1;
+    ui.selectedPlay = null;
+    ui.grade = null;
+    ui.result = null;
+    ui.paintTouches = 0;
+    setSaving(); save();
+    render();
+  }
+
+  // ---- Renderers ----
+  function render(){
+    // current period label
+    periodNowE.textContent = periodLabel(S.period);
+
+    // mode buttons
+    modeZone.classList.toggle('active', ui.mode==='Zone');
+    modeMan .classList.toggle('active', ui.mode==='Man-to-man');
+
+    // plays
+    playsEl.innerHTML = '';
+    PLAYS[ui.mode].forEach(name=>{
+      const item = document.createElement('div');
+      item.className = 'play' + (ui.selectedPlay===name ? ' selected' : '');
+      item.textContent = name;
+      item.addEventListener('click', ()=>{
+        ui.selectedPlay = (ui.selectedPlay===name) ? null : name;
+        renderPlays();
+        checkReady();
+      });
+      playsEl.appendChild(item);
+    });
+
+    renderSelectors();
+    renderLog();
+    checkReady();
+  }
+
+  function renderPlays(){
+    [...playsEl.children].forEach(child=>{
+      child.classList.toggle('selected', child.textContent===ui.selectedPlay);
+    });
+  }
+
+  function renderSelectors(){
+    goodBtn.classList.toggle('selected', ui.grade==='Good');
+    badBtn .classList.toggle('selected', ui.grade==='Bad');
+
+    const count = ui.paintTouches || 0;
+    paintBtn.classList.toggle('selected', count > 0);
+    paintBtn.textContent = count > 0 ? `Paint touch (${count})` : 'Paint touch';
+
+    document.querySelectorAll('.chip.result').forEach(ch=>{
+      ch.classList.toggle('selected', ui.result===ch.dataset.result);
+    });
+  }
+
+  function checkReady(){
+    const ok = !!(ui.selectedPlay && ui.grade && ui.result);
+    submitBtn.disabled = !ok;
+  }
+
+  // ---- Submit / Log ----
+  function submitPossession(){
+    if (!ui.selectedPlay || !ui.grade || !ui.result) return;
+
+    // possessions numbered by count of possession entries
+    const num = S.log.filter(e => !e.type || e.type === 'possession').length + 1;
+
+    const entry = {
+      type: 'possession',
+      n: num,
+      ts: Date.now(),
+      period: S.period || 1,
+      mode: ui.mode,
+      play: ui.selectedPlay,
+      grade: ui.grade,
+      result: ui.result,
+      paintTouches: ui.paintTouches || 0
+    };
+    S.log.push(entry);
+    setSaving(); save();
+
+    ui.selectedPlay = null;
+    ui.grade = null;
+    ui.result = null;
+    ui.paintTouches = 0;
+    render();
+  }
+
+  function renderLog(){
+    const items = [...S.log].reverse(); // most recent first
+    logList.innerHTML = '';
+
+    // Column headers
+    const header = document.createElement('div');
+    header.className = 'log-row log-header';
+    header.innerHTML = `
+      <div>Play</div>
+      <div>Grade</div>
+      <div>Result</div>
+      <div>Paint</div>
+    `;
+    logList.appendChild(header);
+
+    let currentPeriodHeader = null;
+
+    items.forEach(e => {
+      const period = typeof e.period === 'number' ? e.period : 1;
+
+      // Insert period header whenever the period changes
+      if (period !== currentPeriodHeader) {
+        currentPeriodHeader = period;
+        const ph = document.createElement('div');
+        ph.className = 'log-row';
+        const inner = document.createElement('div');
+        inner.className = 'period-header';
+        inner.textContent = periodLabel(period);
+        ph.appendChild(inner);
+        logList.appendChild(ph);
+      }
+
+      // Backwards compatibility: skip non-possession entries if any
+      if (e.type && e.type !== 'possession') return;
+
+      const touches = typeof e.paintTouches === 'number'
+        ? e.paintTouches
+        : (e.paint ? 1 : 0);
+
+      const row = document.createElement('div');
+      row.className = 'log-row ' + (e.grade === 'Good' ? 'good' : 'bad');
+
+      row.innerHTML = `
+        <div>${e.play}</div>
+        <div>${e.grade}</div>
+        <div>${e.result}</div>
+        <div>${touches}</div>
+      `;
+      logList.appendChild(row);
+    });
+  }
+
+  // ---- CSV / Utils ----
+  function clearLog(){
+    if (!confirm('Clear all logged possessions?')) return;
+    S.log = [];
+    setSaving(); save();
+    renderLog();
+  }
+
+  function exportCSV(){
+    const header = 'n,timestamp,period,mode,play,grade,result,paint_touches\n';
+    const rows = S.log
+      .filter(e => !e.type || e.type === 'possession')
+      .map(e => {
+        const touches = typeof e.paintTouches === 'number'
+          ? e.paintTouches
+          : (e.paint ? 1 : 0);
+        const period = typeof e.period === 'number' ? e.period : 1;
+        return `${e.n},${new Date(e.ts).toISOString()},${periodLabel(period)},${csv(e.mode)},${csv(e.play)},${csv(e.grade)},${csv(e.result)},${touches}`;
+      }).join('\n');
+    const blob = new Blob([header+rows+'\n'], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const now = new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);
+    a.href = url; a.download = `possessions_${now}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function csv(s){ return (''+s).replaceAll('"','""'); }
+
+  // ---- boot ----
+  render();
+</script>
+</body>
+</html>
