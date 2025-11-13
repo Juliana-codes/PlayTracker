@@ -62,7 +62,7 @@
 
   .log-row {
     display:grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1fr 1fr; /* Play | Grade | Result | Paint */
     gap:8px;
     align-items:center;
     border-bottom:1px dashed #eee;
@@ -130,7 +130,7 @@
     </div>
     <div class="controls">
       <button class="btn-sm" onclick="exportCSV()">Export CSV</button>
-      <button class="btn-sm" onclick="nextPeriod()">Next Period</button>
+      <button class="btn-sm" onclick="nextPeriod()">Next Q/OT</button>
       <button class="btn-sm" onclick="endGame()">End Game</button>
     </div>
   </div>
@@ -182,7 +182,6 @@
 <script>
   // ---- Config ----
   const PLAYS = {
-    Zone:         ['Transition','Triangle','X','Overload','Middle', 'BLOBs','SLOBs'],
     'Man-to-man': ['Transition','Spots','Quick hitters','Horns','BLOBs','SLOBs']
   };
 
@@ -304,14 +303,11 @@
 
   // ---- Renderers ----
   function render(){
-    // current period label
     periodNowE.textContent = periodLabel(S.period);
 
-    // mode buttons
     modeZone.classList.toggle('active', ui.mode==='Zone');
     modeMan .classList.toggle('active', ui.mode==='Man-to-man');
 
-    // plays
     playsEl.innerHTML = '';
     PLAYS[ui.mode].forEach(name=>{
       const item = document.createElement('div');
@@ -358,7 +354,7 @@
   function submitPossession(){
     if (!ui.selectedPlay || !ui.grade || !ui.result) return;
 
-    // possessions numbered by count of possession entries
+    // possessions numbered by count of possession entries (so #1 is oldest)
     const num = S.log.filter(e => !e.type || e.type === 'possession').length + 1;
 
     const entry = {
@@ -383,14 +379,14 @@
   }
 
   function renderLog(){
-    const items = [...S.log].reverse(); // most recent first
+    const items = [...S.log].reverse(); // most recent at top
     logList.innerHTML = '';
 
     // Column headers
     const header = document.createElement('div');
     header.className = 'log-row log-header';
     header.innerHTML = `
-      <div>Play</div>
+      <div>Play (#)</div>
       <div>Grade</div>
       <div>Result</div>
       <div>Paint</div>
@@ -402,7 +398,7 @@
     items.forEach(e => {
       const period = typeof e.period === 'number' ? e.period : 1;
 
-      // Insert period header whenever the period changes
+      // Insert period header whenever the period changes (in reversed order)
       if (period !== currentPeriodHeader) {
         currentPeriodHeader = period;
         const ph = document.createElement('div');
@@ -414,7 +410,6 @@
         logList.appendChild(ph);
       }
 
-      // Backwards compatibility: skip non-possession entries if any
       if (e.type && e.type !== 'possession') return;
 
       const touches = typeof e.paintTouches === 'number'
@@ -424,8 +419,9 @@
       const row = document.createElement('div');
       row.className = 'log-row ' + (e.grade === 'Good' ? 'good' : 'bad');
 
+      // Play column now shows "#N PlayName"
       row.innerHTML = `
-        <div>${e.play}</div>
+        <div>#${e.n} ${e.play}</div>
         <div>${e.grade}</div>
         <div>${e.result}</div>
         <div>${touches}</div>
