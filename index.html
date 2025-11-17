@@ -212,21 +212,22 @@
 <script>
   // ---- Config ----
   const PLAYS = {
-    'Zone': ['Transition','Triangle','X','Middle','BLOBs','SLOBs'],
+    'Zone': ['Transition', 'Zone', 'Triangle','X','Middle','BLOBs','SLOBs'],
     'Man-to-man': ['Transition','Spots','Quick hitters','Horns','BLOBs','SLOBs']
   };
 
   // NEW: hard-coded 1–10 options per play (except Transition)
   // Later you can change '1','2',... to 'Lopes up','4-high', etc.
   const SUB_OPTIONS = {
-    'Triangle':      ['1','2','3','4','5','6','7','8','9','10'],
-    'X':             ['1','2','3','4','5','6','7','8','9','10'],
-    'Middle':        ['1','2','3','4','5','6','7','8','9','10'],
-    'BLOBs':         ['4 High','Lopes up','2','4','5','6','7','8','9','10'],
-    'SLOBs':         ['1','2','3','4','5','6','7','8','9','10'],
-    'Spots':         ['DHO continuous','test','3','4','5','6','7','8','9','10'],
-    'Quick hitters': ['1','2','3','4','5','6','7','8','9','10'],
-    'Horns':         ['Twist','2','3','4','5','6','7','8','9','10']
+    'Triangle':      [],
+    'X':             [],
+    'Middle':        [],
+    'Zone':          ['Double Drag', 'Overload'],
+    'BLOBs':         ['4 High','Lopes up','2','4','4 Run it right','Box','Double Stack','Lopes up Run it right','TarHeel','10'],
+    'SLOBs':         ['Canes','Canes Run it right','EOG Slob','Lakers EOG','Zipper Ghost Flare'],
+    'Spots':         ['DHO continuous','Away','Dribble Reverse','Drag 5','Stagger','You Go I Go'],
+    'Quick hitters': ['Vegas','C','Double Drag','Double Drag Get','Dribble at Drag','Ear','Ear Run it right','Flat','Floppy','Gucci','Hurry up', 'Mount', 'Stack'],
+    'Horns':         ['Twist','Run it right','Out','Quick']
     // Transition intentionally left out → no sub-tag
   };
 
