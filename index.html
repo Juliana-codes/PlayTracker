@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>Possessions Tracker</title>
+<title>Play Tracker</title>
 <style>
   :root { --pad: 14px; }
   * { box-sizing: border-box; }
@@ -44,6 +44,7 @@
   .chip.bad.selected   { background:#ffe9e9; border-color:#ff6b6b; }
   .chip.paint.selected { background:#fff4e0; border-color:#f39c12; }
   .chip.result.selected { outline:2px solid #555; }
+  .chip.sub.selected   { background:#e8f2ff; border-color:#6aa5ff; }
 
   /* Submit button fixed */
   .submit-wrap {
@@ -108,12 +109,32 @@
   @media(min-width: 800px){
     .grid { grid-template-columns: 1fr 1fr; }
   }
+  /* possession number — same gray as period label */
+  .pos-num {
+      color: #777;
+      font-weight: 700;
+  }
+
+  /* larger period label */
+  #periodNow {
+      font-size: 16px;
+      font-weight: 900;
+  }
+
+  /* number + play alignment */
+  .play-cell {
+      display: grid;
+      grid-template-columns: 40px auto;
+      align-items: center;
+  }
+  .play-name { }
+
 </style>
 </head>
 <body>
 
 <div class="row" style="align-items:center; justify-content:space-between;">
-  <h2>Possessions Tracker</h2>
+  <h2>Play Tracker</h2>
   <div id="saveState" class="muted">Saved</div>
 </div>
 
@@ -122,9 +143,10 @@
     <div>
       <div class="modes">
         <button id="modeZone" class="mode-btn">Zone</button>
-        <button id="modeMan"  class="mode-btn">Man-to-man</button>
+        <button id="modeMan" class="mode-btn">Man-to-man</button>
+        <button id="prevPeriodBtn" class="mode-btn">Prev Q/OT</button>
         <button id="nextPeriodBtn" class="mode-btn">Next Q/OT</button>
-    </div>
+      </div>
 
       <div class="muted" style="margin-top:6px;">
         Current period: <span id="periodNow"></span>
@@ -166,6 +188,12 @@
           <div class="chip result" data-result="TO">TO</div>
         </div>
       </div>
+
+      <!-- Sub-tag selector -->
+      <div>
+        <div class="muted" style="margin:10px 0 6px;">Play detail (1–10, except Transition)</div>
+        <div id="subChips" class="chip-row"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -184,10 +212,25 @@
 <script>
   // ---- Config ----
   const PLAYS = {
+    'Zone': ['Transition','Triangle','X','Middle','BLOBs','SLOBs'],
     'Man-to-man': ['Transition','Spots','Quick hitters','Horns','BLOBs','SLOBs']
   };
 
-  const KEY = 'possessions_tracker_v1';
+  // NEW: hard-coded 1–10 options per play (except Transition)
+  // Later you can change '1','2',... to 'Lopes up','4-high', etc.
+  const SUB_OPTIONS = {
+    'Triangle':      ['1','2','3','4','5','6','7','8','9','10'],
+    'X':             ['1','2','3','4','5','6','7','8','9','10'],
+    'Middle':        ['1','2','3','4','5','6','7','8','9','10'],
+    'BLOBs':         ['4 High','Lopes up','2','4','5','6','7','8','9','10'],
+    'SLOBs':         ['1','2','3','4','5','6','7','8','9','10'],
+    'Spots':         ['DHO continuous','test','3','4','5','6','7','8','9','10'],
+    'Quick hitters': ['1','2','3','4','5','6','7','8','9','10'],
+    'Horns':         ['Twist','2','3','4','5','6','7','8','9','10']
+    // Transition intentionally left out → no sub-tag
+  };
+
+  const KEY = 'play_tracker_v1';
 
   // ---- State ----
   let S = load();
@@ -196,7 +239,8 @@
     selectedPlay: null,
     grade: null,
     result: null,
-    paintTouches: 0
+    paintTouches: 0,
+    subTag: null   // label string like '1', later 'Lopes up' etc.
   };
 
   // ---- Storage helpers ----
@@ -234,9 +278,16 @@
     return 'OT' + (p - 4);
   }
 
+  // A play needs sub-tags only if it's in SUB_OPTIONS
+  function playNeedsSub(play){
+    return !!SUB_OPTIONS[play];
+  }
+
   // ---- UI wiring ----
   const modeZone   = document.getElementById('modeZone');
   const modeMan    = document.getElementById('modeMan');
+  const prevPeriodBtn = document.getElementById('prevPeriodBtn');
+  const nextPeriodBtn = document.getElementById('nextPeriodBtn');
   const playsEl    = document.getElementById('plays');
   const goodBtn    = document.getElementById('goodBtn');
   const badBtn     = document.getElementById('badBtn');
@@ -244,10 +295,12 @@
   const submitBtn  = document.getElementById('submitBtn');
   const logList    = document.getElementById('logList');
   const periodNowE = document.getElementById('periodNow');
+  const subChipsEl = document.getElementById('subChips');
 
   modeZone.addEventListener('click', ()=>setMode('Zone'));
   modeMan .addEventListener('click', ()=>setMode('Man-to-man'));
   nextPeriodBtn.addEventListener('click', nextPeriod);
+  prevPeriodBtn.addEventListener('click', prevPeriod);
 
   goodBtn.addEventListener('click', ()=>{
     ui.grade = (ui.grade==='Good') ? null : 'Good';
@@ -273,7 +326,7 @@
     });
   });
 
-  submitBtn.addEventListener('click', submitPossession);
+  submitBtn.addEventListener('click', submitPlay);
 
   function setMode(m){
     ui.mode = m;
@@ -282,13 +335,29 @@
     ui.grade = null;
     ui.result = null;
     ui.paintTouches = 0;
+    ui.subTag = null;
     setSaving(); save();
     render();
   }
 
   function nextPeriod(){
     S.period = (S.period || 1) + 1;
+    ui.subTag = null;
     setSaving(); save();
+    render();
+  }
+
+  function prevPeriod(){
+    // Don't go below Q1
+    if ((S.period || 1) <= 1) {
+        alert("Can't go back before Q1.");
+        return;
+    }
+
+    S.period = (S.period || 1) - 1;
+    ui.subTag = null;
+    setSaving();
+    save();
     render();
   }
 
@@ -305,6 +374,7 @@
     ui.grade = null;
     ui.result = null;
     ui.paintTouches = 0;
+    ui.subTag = null;
 
     setSaving();
     save();
@@ -324,14 +394,22 @@
       item.className = 'play' + (ui.selectedPlay===name ? ' selected' : '');
       item.textContent = name;
       item.addEventListener('click', ()=>{
-        ui.selectedPlay = (ui.selectedPlay===name) ? null : name;
+        if (ui.selectedPlay === name) {
+          ui.selectedPlay = null;
+          ui.subTag = null;
+        } else {
+          ui.selectedPlay = name;
+          ui.subTag = null;
+        }
         renderPlays();
+        renderSubOptions();
         checkReady();
       });
       playsEl.appendChild(item);
     });
 
     renderSelectors();
+    renderSubOptions();
     renderLog();
     checkReady();
   }
@@ -355,17 +433,62 @@
     });
   }
 
+  function renderSubOptions(){
+    subChipsEl.innerHTML = '';
+
+    if (!ui.selectedPlay) {
+      const msg = document.createElement('div');
+      msg.className = 'muted';
+      msg.textContent = 'Select a play (except Transition) to choose 1–10.';
+      subChipsEl.appendChild(msg);
+      return;
+    }
+
+    const opts = SUB_OPTIONS[ui.selectedPlay];
+    if (!opts) {
+      // No sub-options for this play (e.g., Transition)
+      const msg = document.createElement('div');
+      msg.className = 'muted';
+      msg.textContent = 'No extra detail needed for this play.';
+      subChipsEl.appendChild(msg);
+      return;
+    }
+
+    // Render hard-coded options (currently '1'...'10')
+    opts.forEach(label => {
+      const chip = document.createElement('div');
+      chip.className = 'chip sub' + (ui.subTag === label ? ' selected' : '');
+      chip.textContent = label;
+      chip.addEventListener('click', ()=>{
+        ui.subTag = (ui.subTag === label) ? null : label;
+        renderSubOptions();
+        checkReady();
+      });
+      subChipsEl.appendChild(chip);
+    });
+  }
+
   function checkReady(){
-    const ok = !!(ui.selectedPlay && ui.grade && ui.result);
+    const needsSub = playNeedsSub(ui.selectedPlay);
+    const ok = !!(
+      ui.selectedPlay &&
+      ui.grade &&
+      ui.result &&
+      (!needsSub || ui.subTag !== null)
+    );
     submitBtn.disabled = !ok;
   }
 
   // ---- Submit / Log ----
-  function submitPossession(){
+  function submitPlay(){
     if (!ui.selectedPlay || !ui.grade || !ui.result) return;
+    const needsSub = playNeedsSub(ui.selectedPlay);
+    if (needsSub && ui.subTag === null) return;
 
-    // possessions numbered by count of possession entries (so #1 is oldest)
-    const num = S.log.filter(e => !e.type || e.type === 'possession').length + 1;
+    // possessions numbered by count of possession entries PER PERIOD
+    const num = S.log.filter(e => 
+      (!e.type || e.type === 'possession') && e.period === S.period
+    ).length + 1;
 
     const entry = {
       type: 'possession',
@@ -374,6 +497,7 @@
       period: S.period || 1,
       mode: ui.mode,
       play: ui.selectedPlay,
+      subTag: needsSub ? ui.subTag : null,   // label string
       grade: ui.grade,
       result: ui.result,
       paintTouches: ui.paintTouches || 0
@@ -385,6 +509,7 @@
     ui.grade = null;
     ui.result = null;
     ui.paintTouches = 0;
+    ui.subTag = null;
     render();
   }
 
@@ -396,7 +521,7 @@
     const header = document.createElement('div');
     header.className = 'log-row log-header';
     header.innerHTML = `
-      <div>Play (#)</div>
+      <div>Play (# per period)</div>
       <div>Grade</div>
       <div>Result</div>
       <div>Paint</div>
@@ -429,9 +554,15 @@
       const row = document.createElement('div');
       row.className = 'log-row ' + (e.grade === 'Good' ? 'good' : 'bad');
 
-      // Play column now shows "#N PlayName"
+      const labelPlay = (e.subTag != null)
+        ? `${e.play}: ${e.subTag}`
+        : e.play;
+
       row.innerHTML = `
-        <div>#${e.n} ${e.play}</div>
+        <div class="play-cell">
+          <span class="pos-num">${e.n}</span>
+          <span class="play-name">${labelPlay}</span>
+        </div>
         <div>${e.grade}</div>
         <div>${e.result}</div>
         <div>${touches}</div>
@@ -442,14 +573,14 @@
 
   // ---- CSV / Utils ----
   function clearLog(){
-    if (!confirm('Clear all logged possessions?')) return;
+    if (!confirm('Clear all logged plays?')) return;
     S.log = [];
     setSaving(); save();
     renderLog();
   }
 
   function exportCSV(){
-    const header = 'n,timestamp,period,mode,play,grade,result,paint_touches\n';
+    const header = 'n,timestamp,period,mode,play,sub_tag,grade,result,paint_touches\n';
     const rows = S.log
       .filter(e => !e.type || e.type === 'possession')
       .map(e => {
@@ -457,13 +588,14 @@
           ? e.paintTouches
           : (e.paint ? 1 : 0);
         const period = typeof e.period === 'number' ? e.period : 1;
-        return `${e.n},${new Date(e.ts).toISOString()},${periodLabel(period)},${csv(e.mode)},${csv(e.play)},${csv(e.grade)},${csv(e.result)},${touches}`;
+        const sub = (e.subTag != null) ? e.subTag : '';
+        return `${e.n},${new Date(e.ts).toISOString()},${periodLabel(period)},${csv(e.mode)},${csv(e.play)},${sub},${csv(e.grade)},${csv(e.result)},${touches}`;
       }).join('\n');
     const blob = new Blob([header+rows+'\n'], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const now = new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);
-    a.href = url; a.download = `possessions_${now}.csv`;
+    a.href = url; a.download = `gameplaylog_${now}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }
