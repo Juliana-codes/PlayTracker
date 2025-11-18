@@ -191,7 +191,7 @@
 
       <!-- Sub-tag selector -->
       <div>
-        <div class="muted" style="margin:10px 0 6px;">Play detail (1–10, except Transition)</div>
+        <div class="muted" style="margin:10px 0 6px;">Play detail (optional)</div>
         <div id="subChips" class="chip-row"></div>
       </div>
     </div>
@@ -212,8 +212,8 @@
 <script>
   // ---- Config ----
   const PLAYS = {
-    'Zone': ['Transition', 'Zone', 'Triangle','X','Middle','BLOBs','SLOBs'],
-    'Man-to-man': ['Transition','Spots','Quick hitters','Horns','BLOBs','SLOBs']
+    'Zone': ['Transition','Zone', 'Spots', 'Triangle','X','Middle','BLOBs','SLOBs', 'White Board'],
+    'Man-to-man': ['Transition','Spots','Quick hitters','Horns','BLOBs','SLOBs', 'White Board']
   };
 
   // NEW: hard-coded 1–10 options per play (except Transition)
@@ -224,10 +224,11 @@
     'Middle':        [],
     'Zone':          ['Double Drag', 'Overload'],
     'BLOBs':         ['4 High','Lopes up','2','4','4 Run it right','Box','Double Stack','Lopes up Run it right','TarHeel','10'],
-    'SLOBs':         ['Canes','Canes Run it right','EOG Slob','Lakers EOG','Zipper Ghost Flare'],
+    'SLOBs':         ['Canes','Canes Run it right','EOG Slob','Lakers EOG','Zipper Ghost Flare', 'Line'],
     'Spots':         ['DHO continuous','Away','Dribble Reverse','Drag 5','Stagger','You Go I Go'],
     'Quick hitters': ['Vegas','C','Double Drag','Double Drag Get','Dribble at Drag','Ear','Ear Run it right','Flat','Floppy','Gucci','Hurry up', 'Mount', 'Stack'],
-    'Horns':         ['Twist','Run it right','Out','Quick']
+    'Horns':         ['Twist','Run it right','Out','Quick', '2'],
+    'White Board':  ['BLOB', 'SLOB', 'Man Play', 'Zone Play', 'Other']
     // Transition intentionally left out → no sub-tag
   };
 
@@ -470,49 +471,47 @@
   }
 
   function checkReady(){
-    const needsSub = playNeedsSub(ui.selectedPlay);
-    const ok = !!(
-      ui.selectedPlay &&
-      ui.grade &&
-      ui.result &&
-      (!needsSub || ui.subTag !== null)
-    );
-    submitBtn.disabled = !ok;
-  }
+  const ok = !!(
+    ui.selectedPlay &&
+    ui.grade &&
+    ui.result
+  );
+  submitBtn.disabled = !ok;
+}
+
 
   // ---- Submit / Log ----
   function submitPlay(){
-    if (!ui.selectedPlay || !ui.grade || !ui.result) return;
-    const needsSub = playNeedsSub(ui.selectedPlay);
-    if (needsSub && ui.subTag === null) return;
+  if (!ui.selectedPlay || !ui.grade || !ui.result) return;
 
-    // possessions numbered by count of possession entries PER PERIOD
-    const num = S.log.filter(e => 
-      (!e.type || e.type === 'possession') && e.period === S.period
-    ).length + 1;
+  // possessions numbered by count of possession entries PER PERIOD
+  const num = S.log.filter(e => 
+    (!e.type || e.type === 'possession') && e.period === S.period
+  ).length + 1;
 
-    const entry = {
-      type: 'possession',
-      n: num,
-      ts: Date.now(),
-      period: S.period || 1,
-      mode: ui.mode,
-      play: ui.selectedPlay,
-      subTag: needsSub ? ui.subTag : null,   // label string
-      grade: ui.grade,
-      result: ui.result,
-      paintTouches: ui.paintTouches || 0
-    };
-    S.log.push(entry);
-    setSaving(); save();
+  const entry = {
+    type: 'possession',
+    n: num,
+    ts: Date.now(),
+    period: S.period || 1,
+    mode: ui.mode,
+    play: ui.selectedPlay,
+    subTag: ui.subTag || null,   // optional add-on now
+    grade: ui.grade,
+    result: ui.result,
+    paintTouches: ui.paintTouches || 0
+  };
+  S.log.push(entry);
+  setSaving(); save();
 
-    ui.selectedPlay = null;
-    ui.grade = null;
-    ui.result = null;
-    ui.paintTouches = 0;
-    ui.subTag = null;
-    render();
-  }
+  ui.selectedPlay = null;
+  ui.grade = null;
+  ui.result = null;
+  ui.paintTouches = 0;
+  ui.subTag = null;
+  render();
+}
+
 
   function renderLog(){
     const items = [...S.log].reverse(); // most recent at top
