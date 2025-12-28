@@ -46,6 +46,15 @@
   .chip.result.selected { outline:2px solid #555; }
   .chip.sub.selected   { background:#e8f2ff; border-color:#6aa5ff; }
 
+  /* Off reb chip */
+  .chip.oreb { background:#fff4e0; border-color:#f39c12; }
+  .chip.oreb.selected { outline:2px solid #f39c12; }
+  .chip.disabled { opacity:0.5; pointer-events:none; }
+
+  /* Chip row layout: left group + right button */
+  .chip-row.topline { justify-content:space-between; width:100%; }
+  .chip-row-left { display:flex; gap:10px; flex-wrap:wrap; }
+
   /* Submit button fixed */
   .submit-wrap {
     position:fixed; right:12px; bottom:12px; z-index:10;
@@ -74,6 +83,10 @@
   /* Good / Bad row coloring */
   .log-row.good { background:#e8f7ee; }
   .log-row.bad  { background:#ffe9e9; }
+
+  /* OR / from OR coloring */
+  .log-row.oreb { background:#fff4e0; }
+  .log-row.from-oreb { background:#fff4e0; }
 
   .log-header {
     font-weight:800;
@@ -109,26 +122,21 @@
   @media(min-width: 800px){
     .grid { grid-template-columns: 1fr 1fr; }
   }
+
   /* possession number — same gray as period label */
-  .pos-num {
-      color: #777;
-      font-weight: 700;
-  }
+  .pos-num { color: #777; font-weight: 700; }
 
   /* larger period label */
-  #periodNow {
-      font-size: 16px;
-      font-weight: 900;
-  }
+  #periodNow { font-size: 16px; font-weight: 900; }
 
   /* number + play alignment */
   .play-cell {
-      display: grid;
-      grid-template-columns: 40px auto;
-      align-items: center;
+    display: grid;
+    grid-template-columns: 40px auto;
+    align-items: center;
   }
+  .play-cell.indent { padding-left:16px; }
   .play-name { }
-
 </style>
 </head>
 <body>
@@ -171,10 +179,14 @@
   <div class="card">
     <h3>Selection</h3>
     <div class="col">
-      <div class="chip-row">
-        <div id="goodBtn"  class="chip good">Good</div>
-        <div id="badBtn"   class="chip bad">Bad</div>
-        <div id="paintBtn" class="chip paint">Paint touch</div>
+      <div class="chip-row topline">
+        <div class="chip-row-left">
+          <div id="goodBtn"  class="chip good">Good</div>
+          <div id="badBtn"   class="chip bad">Bad</div>
+          <div id="paintBtn" class="chip paint">Paint touch</div>
+        </div>
+
+        <div id="orebBtn" class="chip oreb disabled">Off Reb</div>
       </div>
 
       <div>
@@ -216,8 +228,6 @@
     'Man-to-man': ['Transition','Spots','Quick hitters','Horns','BLOBs','SLOBs', 'White Board']
   };
 
-  // NEW: hard-coded 1–10 options per play (except Transition)
-  // Later you can change '1','2',... to 'Lopes up','4-high', etc.
   const SUB_OPTIONS = {
     'Triangle':      [],
     'X':             [],
@@ -226,9 +236,11 @@
     'BLOBs':         ['4 High','Lopes up','2','4','4 Run it right','Box','Double Stack','Lopes up Run it right','TarHeel','10'],
     'SLOBs':         ['Canes','Canes Run it right','EOG Slob','Lakers EOG','Zipper Ghost Flare', 'Line'],
     'Spots':         ['DHO continuous','Away','Dribble Reverse','Drag 5','Stagger','You Go I Go'],
-    'Quick hitters': ['Vegas','C','Double Drag','Double Drag Get','Dribble at Drag','Ear','Ear Run it right','Flat','Floppy','Gucci','Hurry up', 'Mount', 'Stack'],
-    'Horns':         ['Twist','Run it right','Out','Quick', '2'],
-    'White Board':  ['BLOB', 'SLOB', 'Man Play', 'Zone Play', 'Other']
+    'Quick hitters': ['Vegas','C','Double Drag','Double Drag Get',
+      'Dribble at Drag','Ear','Ear Run it right','Flat','Floppy','Gucci','Hurry up', 'Mount', 'Stack',
+      'Punch', 'Winner', 'Clipper' , 'Auburn Go'],
+    'Horns':         ['Twist','Run it right','Out','Quick', '2', 'Dive'],
+    'White Board':   ['BLOB', 'SLOB', 'Man Play', 'Zone Play', 'Other']
     // Transition intentionally left out → no sub-tag
   };
 
@@ -236,33 +248,38 @@
 
   // ---- State ----
   let S = load();
+  S.nextFromOreb = !!S.nextFromOreb;
+
   let ui = {
     mode: S.mode || 'Zone',
     selectedPlay: null,
     grade: null,
     result: null,
     paintTouches: 0,
-    subTag: null   // label string like '1', later 'Lopes up' etc.
+    subTag: null
   };
 
   // ---- Storage helpers ----
   function load(){
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return { mode:'Zone', log:[], period:1 };
+      if (!raw) return { mode:'Zone', log:[], period:1, nextFromOreb:false };
       const obj = JSON.parse(raw);
       obj.mode   ||= 'Zone';
       obj.log    ||= [];
       obj.period = typeof obj.period === 'number' ? obj.period : 1;
+      obj.nextFromOreb = !!obj.nextFromOreb;
       return obj;
     } catch {
-      return { mode:'Zone', log:[], period:1 };
+      return { mode:'Zone', log:[], period:1, nextFromOreb:false };
     }
   }
+
   function save(){
     localStorage.setItem(KEY, JSON.stringify(S));
     setSaved();
   }
+
   let saveTimer=null;
   function setSaving(){
     clearTimeout(saveTimer);
@@ -280,9 +297,11 @@
     return 'OT' + (p - 4);
   }
 
-  // A play needs sub-tags only if it's in SUB_OPTIONS
-  function playNeedsSub(play){
-    return !!SUB_OPTIONS[play];
+  function nextPossessionNumber(){
+    return S.log.filter(e =>
+      e.period === S.period &&
+      (e.type === 'possession' || e.type === 'oreb' || !e.type)
+    ).length + 1;
   }
 
   // ---- UI wiring ----
@@ -294,6 +313,7 @@
   const goodBtn    = document.getElementById('goodBtn');
   const badBtn     = document.getElementById('badBtn');
   const paintBtn   = document.getElementById('paintBtn');
+  const orebBtn    = document.getElementById('orebBtn');
   const submitBtn  = document.getElementById('submitBtn');
   const logList    = document.getElementById('logList');
   const periodNowE = document.getElementById('periodNow');
@@ -309,11 +329,13 @@
     renderSelectors();
     checkReady();
   });
+
   badBtn.addEventListener('click', ()=>{
     ui.grade = (ui.grade==='Bad') ? null : 'Bad';
     renderSelectors();
     checkReady();
   });
+
   paintBtn.addEventListener('click', ()=>{
     ui.paintTouches = (ui.paintTouches || 0) + 1;
     renderSelectors();
@@ -329,6 +351,7 @@
   });
 
   submitBtn.addEventListener('click', submitPlay);
+  orebBtn.addEventListener('click', submitOreb);
 
   function setMode(m){
     ui.mode = m;
@@ -338,6 +361,9 @@
     ui.result = null;
     ui.paintTouches = 0;
     ui.subTag = null;
+
+    S.nextFromOreb = false;
+
     setSaving(); save();
     render();
   }
@@ -345,33 +371,36 @@
   function nextPeriod(){
     S.period = (S.period || 1) + 1;
     ui.subTag = null;
+
+    S.nextFromOreb = false;
+
     setSaving(); save();
     render();
   }
 
   function prevPeriod(){
-    // Don't go below Q1
     if ((S.period || 1) <= 1) {
-        alert("Can't go back before Q1.");
-        return;
+      alert("Can't go back before Q1.");
+      return;
     }
-
     S.period = (S.period || 1) - 1;
     ui.subTag = null;
-    setSaving();
-    save();
+
+    S.nextFromOreb = false;
+
+    setSaving(); save();
     render();
   }
 
   function endGame(){
     if (!confirm('Export and end game?')) return;
 
-    // 1. Export CSV BEFORE clearing
     exportCSV();
 
-    // 2. Reset game back to Q1, clear log
     S.log = [];
     S.period = 1;
+    S.nextFromOreb = false;
+
     ui.selectedPlay = null;
     ui.grade = null;
     ui.result = null;
@@ -441,14 +470,13 @@
     if (!ui.selectedPlay) {
       const msg = document.createElement('div');
       msg.className = 'muted';
-      msg.textContent = 'Select a play (except Transition) to choose 1–10.';
+      msg.textContent = 'Select a play to choose an optional detail.';
       subChipsEl.appendChild(msg);
       return;
     }
 
     const opts = SUB_OPTIONS[ui.selectedPlay];
     if (!opts) {
-      // No sub-options for this play (e.g., Transition)
       const msg = document.createElement('div');
       msg.className = 'muted';
       msg.textContent = 'No extra detail needed for this play.';
@@ -456,7 +484,6 @@
       return;
     }
 
-    // Render hard-coded options (currently '1'...'10')
     opts.forEach(label => {
       const chip = document.createElement('div');
       chip.className = 'chip sub' + (ui.subTag === label ? ' selected' : '');
@@ -471,53 +498,83 @@
   }
 
   function checkReady(){
-  const ok = !!(
-    ui.selectedPlay &&
-    ui.grade &&
-    ui.result
-  );
-  submitBtn.disabled = !ok;
-}
+    const ok = !!(ui.selectedPlay && ui.grade && ui.result);
+    submitBtn.disabled = !ok;
 
+    orebBtn.classList.toggle('disabled', !ok);
+    orebBtn.classList.toggle('selected', !!S.nextFromOreb);
+  }
 
   // ---- Submit / Log ----
   function submitPlay(){
-  if (!ui.selectedPlay || !ui.grade || !ui.result) return;
+    if (!ui.selectedPlay || !ui.grade || !ui.result) return;
 
-  // possessions numbered by count of possession entries PER PERIOD
-  const num = S.log.filter(e => 
-    (!e.type || e.type === 'possession') && e.period === S.period
-  ).length + 1;
+    const num = nextPossessionNumber();
 
-  const entry = {
-    type: 'possession',
-    n: num,
-    ts: Date.now(),
-    period: S.period || 1,
-    mode: ui.mode,
-    play: ui.selectedPlay,
-    subTag: ui.subTag || null,   // optional add-on now
-    grade: ui.grade,
-    result: ui.result,
-    paintTouches: ui.paintTouches || 0
-  };
-  S.log.push(entry);
-  setSaving(); save();
+    const entry = {
+      type: 'possession',
+      n: num,
+      ts: Date.now(),
+      period: S.period || 1,
+      mode: ui.mode,
+      play: ui.selectedPlay,
+      subTag: ui.subTag || null,
+      grade: ui.grade,
+      result: ui.result,
+      paintTouches: ui.paintTouches || 0,
+      fromOreb: !!S.nextFromOreb
+    };
 
-  ui.selectedPlay = null;
-  ui.grade = null;
-  ui.result = null;
-  ui.paintTouches = 0;
-  ui.subTag = null;
-  render();
-}
+    S.log.push(entry);
 
+    if (S.nextFromOreb) S.nextFromOreb = false;
+
+    setSaving(); save();
+
+    ui.selectedPlay = null;
+    ui.grade = null;
+    ui.result = null;
+    ui.paintTouches = 0;
+    ui.subTag = null;
+    render();
+  }
+
+  function submitOreb(){
+    if (!ui.selectedPlay || !ui.grade || !ui.result) return;
+
+    const num = nextPossessionNumber();
+
+    const entry = {
+      type: 'oreb',
+      n: num,
+      ts: Date.now(),
+      period: S.period || 1,
+      mode: ui.mode,
+      play: ui.selectedPlay,
+      subTag: ui.subTag || null,
+      grade: ui.grade,
+      result: ui.result,
+      paintTouches: ui.paintTouches || 0
+    };
+
+    S.log.push(entry);
+
+    S.nextFromOreb = true;
+
+    setSaving(); save();
+
+    ui.selectedPlay = null;
+    ui.grade = null;
+    ui.result = null;
+    ui.paintTouches = 0;
+    ui.subTag = null;
+    render();
+  }
 
   function renderLog(){
-    const items = [...S.log].reverse(); // most recent at top
+    const items = [...S.log].reverse();
     logList.innerHTML = '';
 
-    // Column headers
     const header = document.createElement('div');
     header.className = 'log-row log-header';
     header.innerHTML = `
@@ -533,7 +590,6 @@
     items.forEach(e => {
       const period = typeof e.period === 'number' ? e.period : 1;
 
-      // Insert period header whenever the period changes (in reversed order)
       if (period !== currentPeriodHeader) {
         currentPeriodHeader = period;
         const ph = document.createElement('div');
@@ -545,21 +601,27 @@
         logList.appendChild(ph);
       }
 
-      if (e.type && e.type !== 'possession') return;
+      if (e.type && e.type !== 'possession' && e.type !== 'oreb') return;
 
       const touches = typeof e.paintTouches === 'number'
         ? e.paintTouches
         : (e.paint ? 1 : 0);
 
       const row = document.createElement('div');
-      row.className = 'log-row ' + (e.grade === 'Good' ? 'good' : 'bad');
 
-      const labelPlay = (e.subTag != null)
-        ? `${e.play}: ${e.subTag}`
-        : e.play;
+      const isOreb = e.type === 'oreb';
+      const fromOreb = !!e.fromOreb;
+
+      row.className = 'log-row ' +
+        (isOreb ? 'oreb' : (fromOreb ? 'from-oreb' : (e.grade === 'Good' ? 'good' : 'bad')));
+
+      const basePlay = (e.subTag != null) ? `${e.play}: ${e.subTag}` : e.play;
+      const labelPlay = (e.type === 'oreb') ? `OREB → ${basePlay}` : basePlay;
+
+      const playCellClass = 'play-cell' + (fromOreb ? ' indent' : '');
 
       row.innerHTML = `
-        <div class="play-cell">
+        <div class="${playCellClass}">
           <span class="pos-num">${e.n}</span>
           <span class="play-name">${labelPlay}</span>
         </div>
@@ -575,6 +637,7 @@
   function clearLog(){
     if (!confirm('Clear all logged plays?')) return;
     S.log = [];
+    S.nextFromOreb = false;
     setSaving(); save();
     renderLog();
   }
@@ -582,15 +645,20 @@
   function exportCSV(){
     const header = 'n,timestamp,period,mode,play,sub_tag,grade,result,paint_touches\n';
     const rows = S.log
-      .filter(e => !e.type || e.type === 'possession')
+      .filter(e => !e.type || e.type === 'possession' || e.type === 'oreb')
       .map(e => {
         const touches = typeof e.paintTouches === 'number'
           ? e.paintTouches
           : (e.paint ? 1 : 0);
         const period = typeof e.period === 'number' ? e.period : 1;
         const sub = (e.subTag != null) ? e.subTag : '';
-        return `${e.n},${new Date(e.ts).toISOString()},${periodLabel(period)},${csv(e.mode)},${csv(e.play)},${sub},${csv(e.grade)},${csv(e.result)},${touches}`;
+        const play = (e.type === 'oreb')
+          ? `OREB -> ${e.play}`
+          : e.play;
+
+        return `${e.n},${new Date(e.ts).toISOString()},${periodLabel(period)},${csv(e.mode)},${csv(play)},${sub},${csv(e.grade)},${csv(e.result)},${touches}`;
       }).join('\n');
+
     const blob = new Blob([header+rows+'\n'], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
